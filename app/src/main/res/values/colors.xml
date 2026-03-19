@@ -1,0 +1,7 @@
+<resources>
+    <color name="background">#F5F7FA</color>
+    <color name="cell_bg">#FFFFFF</color>
+    <color name="cell_border">#C8D0DB</color>
+    <color name="text_primary">#1C2A39</color>
+    <color name="text_secondary">#516173</color>
+</resources>

@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Крестики-нолики</string>
+    <string name="new_game">Новая игра</string>
+    <string name="turn_text">Ход: %1$s</string>
+    <string name="winner_text">Победил: %1$s</string>
+    <string name="draw_text">Ничья</string>
+</resources>
