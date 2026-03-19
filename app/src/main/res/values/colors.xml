@@ -1,7 +1,12 @@
 <resources>
-    <color name="background">#F5F7FA</color>
+    <color name="background">#F2F5FA</color>
+    <color name="card_bg">#FFFFFF</color>
+    <color name="primary">#3567F6</color>
     <color name="cell_bg">#FFFFFF</color>
-    <color name="cell_border">#C8D0DB</color>
-    <color name="text_primary">#1C2A39</color>
-    <color name="text_secondary">#516173</color>
+    <color name="cell_blocked">#E3E7EF</color>
+    <color name="cell_border">#C9D2E3</color>
+    <color name="text_primary">#192234</color>
+    <color name="text_secondary">#5B6780</color>
+    <color name="mark_x">#1E63E9</color>
+    <color name="mark_o">#D2691E</color>
 </resources>

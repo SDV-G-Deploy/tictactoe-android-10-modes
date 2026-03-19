@@ -4,4 +4,13 @@
     <string name="turn_text">Ход: %1$s</string>
     <string name="winner_text">Победил: %1$s</string>
     <string name="draw_text">Ничья</string>
+
+    <string name="menu_title">Крестики-нолики</string>
+    <string name="menu_subtitle">Выберите режим и начните игру</string>
+    <string name="selected_mode">Выбранный режим</string>
+    <string name="mode_list_title">Все режимы</string>
+    <string name="start_game">Начать игру</string>
+    <string name="restart">Рестарт</string>
+    <string name="switch_mode">Сменить режим</string>
+    <string name="back_to_menu">Назад в меню</string>
 </resources>

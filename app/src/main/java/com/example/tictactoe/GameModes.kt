@@ -20,7 +20,8 @@ enum class CellKind {
 data class CellViewState(
     val text: String,
     val enabled: Boolean,
-    val blocked: Boolean = false
+    val blocked: Boolean = false,
+    val kind: CellKind = CellKind.EMPTY
 )
 
 data class GameViewState(
@@ -222,7 +223,8 @@ open class ConfigurableMode(
             CellViewState(
                 text = symbol,
                 enabled = !gameOver && cell == CellKind.EMPTY && (!gravityEnabled || hasEmptyInColumn(idx % size)),
-                blocked = cell == CellKind.BLOCKED
+                blocked = cell == CellKind.BLOCKED,
+                kind = cell
             )
         }
 
@@ -313,7 +315,8 @@ class UltimateMode : GameMode {
             CellViewState(
                 text = text,
                 enabled = !gameOver && cell == CellKind.EMPTY && isAllowed && !locallyDone,
-                blocked = locallyDone
+                blocked = locallyDone,
+                kind = cell
             )
         }
 
