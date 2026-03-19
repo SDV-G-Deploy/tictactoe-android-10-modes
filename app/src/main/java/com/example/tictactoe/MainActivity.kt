@@ -10,6 +10,7 @@ import android.widget.Button
 import android.widget.GridLayout
 import android.widget.ListView
 import android.widget.TextView
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
 import kotlin.math.min
@@ -56,13 +57,18 @@ class MainActivity : AppCompatActivity() {
         updateSelectedModeCard()
         showMenuScreen()
 
-        onBackPressedDispatcher.addCallback(this) {
-            if (gameScreen.visibility == View.VISIBLE) {
-                showMenuScreen()
-            } else {
-                finish()
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    if (gameScreen.visibility == View.VISIBLE) {
+                        showMenuScreen()
+                    } else {
+                        finish()
+                    }
+                }
             }
-        }
+        )
     }
 
     override fun onResume() {
