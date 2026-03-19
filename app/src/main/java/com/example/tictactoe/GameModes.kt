@@ -1,6 +1,5 @@
 package com.example.tictactoe
 
-import kotlin.math.max
 import kotlin.random.Random
 
 enum class Mark(val symbol: String) {
@@ -21,7 +20,14 @@ data class CellViewState(
     val text: String,
     val enabled: Boolean,
     val blocked: Boolean = false,
-    val kind: CellKind = CellKind.EMPTY
+    val kind: CellKind = CellKind.EMPTY,
+    val dimmed: Boolean = false
+)
+
+data class UltimateUiState(
+    val forcedLocal: Int?,
+    val localStates: List<CellKind>,
+    val allowedLocals: Set<Int>
 )
 
 data class GameViewState(
@@ -30,7 +36,11 @@ data class GameViewState(
     val cells: List<CellViewState>,
     val modeName: String,
     val modeDescription: String,
-    val gameOver: Boolean
+    val gameOver: Boolean,
+    val currentPlayer: Mark? = null,
+    val winner: Mark? = null,
+    val isDraw: Boolean = false,
+    val ultimate: UltimateUiState? = null
 )
 
 data class ModeDefinition(
@@ -46,11 +56,6 @@ interface GameMode {
     fun tick() {}
     fun render(): GameViewState
 }
-
-private data class WinData(
-    val hasWinner: Boolean,
-    val winner: Mark? = null
-)
 
 private fun winnerForBoard(board: Array<CellKind>, size: Int, need: Int): Mark? {
     val directions = listOf(
@@ -105,11 +110,15 @@ open class ConfigurableMode(
     private var secondsLeft = timedSeconds ?: 0
     private var bombIndex: Int? = null
     private var bombActive = false
+    private var winner: Mark? = null
+    private var draw = false
 
     override fun newGame() {
         board = Array(size * size) { CellKind.EMPTY }
         current = Mark.X
         gameOver = false
+        winner = null
+        draw = false
         status = "Ход: ${current.symbol}"
         secondsLeft = timedSeconds ?: 0
         bombActive = bombEnabled
@@ -119,11 +128,11 @@ open class ConfigurableMode(
             picks.forEach { board[it] = CellKind.BLOCKED }
         }
 
-        if (bombEnabled) {
+        bombIndex = if (bombEnabled) {
             val candidates = board.indices.filter { board[it] == CellKind.EMPTY }
-            bombIndex = candidates.randomOrNull()
+            candidates.randomOrNull()
         } else {
-            bombIndex = null
+            null
         }
 
         if (timedSeconds != null) {
@@ -135,8 +144,7 @@ open class ConfigurableMode(
         if (gameOver || index !in board.indices) return
 
         val targetIndex = if (gravityEnabled) lowestEmptyInColumn(index % size) else index
-        if (targetIndex == -1) return
-        if (board[targetIndex] != CellKind.EMPTY) return
+        if (targetIndex == -1 || board[targetIndex] != CellKind.EMPTY) return
 
         if (bombActive && bombIndex == targetIndex) {
             triggerBomb()
@@ -145,20 +153,21 @@ open class ConfigurableMode(
 
         board[targetIndex] = if (current == Mark.X) CellKind.X else CellKind.O
 
-        val winner = winnerForBoard(board, size, winLength)
-        if (winner != null) {
+        val boardWinner = winnerForBoard(board, size, winLength)
+        if (boardWinner != null) {
             gameOver = true
-            if (misere) {
-                val actualWinner = winner.other()
-                status = "Линия у ${winner.symbol}: по misère победил ${actualWinner.symbol}"
+            winner = if (misere) boardWinner.other() else boardWinner
+            status = if (misere) {
+                "Линия у ${boardWinner.symbol}: по misère победил ${winner!!.symbol}"
             } else {
-                status = "Победил: ${winner.symbol}"
+                "Победил: ${winner!!.symbol}"
             }
             return
         }
 
         if (board.none { it == CellKind.EMPTY }) {
             gameOver = true
+            draw = true
             status = "Ничья"
             return
         }
@@ -234,7 +243,10 @@ open class ConfigurableMode(
             cells = cellViews,
             modeName = definition.title,
             modeDescription = definition.description,
-            gameOver = gameOver
+            gameOver = gameOver,
+            currentPlayer = if (gameOver) null else current,
+            winner = winner,
+            isDraw = draw
         )
     }
 
@@ -249,8 +261,8 @@ open class ConfigurableMode(
 class UltimateMode : GameMode {
     override val definition = ModeDefinition(
         id = "ultimate",
-        title = "Ultimate (упрощённый)",
-        description = "Поле 9x9 как 9 мини-полей 3x3. Клетка отправляет соперника в соответствующее мини-поле."
+        title = "Ultimate 9x9",
+        description = "9 мини-полей 3x3. Ход в клетку отправляет соперника в соответствующее мини-поле."
     )
 
     private val size = 9
@@ -260,6 +272,8 @@ class UltimateMode : GameMode {
     private var gameOver = false
     private var forcedLocal: Int? = null
     private var status = ""
+    private var winner: Mark? = null
+    private var draw = false
 
     override fun newGame() {
         board = Array(size * size) { CellKind.EMPTY }
@@ -267,6 +281,8 @@ class UltimateMode : GameMode {
         current = Mark.X
         gameOver = false
         forcedLocal = null
+        winner = null
+        draw = false
         status = "Ход: ${current.symbol}. Можно в любое мини-поле"
     }
 
@@ -281,12 +297,14 @@ class UltimateMode : GameMode {
         val globalWinner = globalWinner()
         if (globalWinner != null) {
             gameOver = true
+            winner = globalWinner
             status = "Победил: ${globalWinner.symbol} (по мини-полям)"
             return
         }
 
         if (board.none { it == CellKind.EMPTY } || localStatus.all { it != CellKind.EMPTY }) {
             gameOver = true
+            draw = true
             status = "Ничья"
             return
         }
@@ -303,9 +321,10 @@ class UltimateMode : GameMode {
     }
 
     override fun render(): GameViewState {
+        val allowedLocals = (0 until 9).filter { isLocalAllowed(it) }.toSet()
         val cells = board.mapIndexed { idx, cell ->
             val local = localIndexByCell(idx)
-            val isAllowed = isLocalAllowed(local)
+            val isAllowed = local in allowedLocals
             val text = when (cell) {
                 CellKind.X -> "X"
                 CellKind.O -> "O"
@@ -316,7 +335,8 @@ class UltimateMode : GameMode {
                 text = text,
                 enabled = !gameOver && cell == CellKind.EMPTY && isAllowed && !locallyDone,
                 blocked = locallyDone,
-                kind = cell
+                kind = cell,
+                dimmed = !locallyDone && !isAllowed
             )
         }
 
@@ -326,16 +346,24 @@ class UltimateMode : GameMode {
             cells = cells,
             modeName = definition.title,
             modeDescription = definition.description,
-            gameOver = gameOver
+            gameOver = gameOver,
+            currentPlayer = if (gameOver) null else current,
+            winner = winner,
+            isDraw = draw,
+            ultimate = UltimateUiState(
+                forcedLocal = forcedLocal,
+                localStates = localStatus.toList(),
+                allowedLocals = allowedLocals
+            )
         )
     }
 
     private fun updateLocalResult(local: Int) {
         if (localStatus[local] != CellKind.EMPTY) return
         val mini = extractLocalBoard(local)
-        val winner = winnerForBoard(mini, 3, 3)
-        if (winner != null) {
-            localStatus[local] = if (winner == Mark.X) CellKind.X else CellKind.O
+        val miniWinner = winnerForBoard(mini, 3, 3)
+        if (miniWinner != null) {
+            localStatus[local] = if (miniWinner == Mark.X) CellKind.X else CellKind.O
             return
         }
         if (mini.none { it == CellKind.EMPTY }) {

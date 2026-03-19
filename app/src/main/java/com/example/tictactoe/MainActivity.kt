@@ -1,237 +1,371 @@
 package com.example.tictactoe
 
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.view.View
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
-import android.widget.Button
-import android.widget.GridLayout
-import android.widget.ListView
-import android.widget.TextView
-import androidx.activity.OnBackPressedCallback
-import androidx.appcompat.app.AppCompatActivity
-import com.google.android.material.button.MaterialButton
-import kotlin.math.min
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 
-class MainActivity : AppCompatActivity() {
-
-    private lateinit var menuScreen: View
-    private lateinit var gameScreen: View
-
-    private lateinit var selectedModeTitle: TextView
-    private lateinit var selectedModeDescription: TextView
-    private lateinit var modeList: ListView
-    private lateinit var startGameButton: Button
-
-    private lateinit var gameModeTitle: TextView
-    private lateinit var gameModeDescription: TextView
-    private lateinit var statusText: TextView
-    private lateinit var restartButton: Button
-    private lateinit var switchModeButton: Button
-    private lateinit var menuButton: Button
-    private lateinit var boardGrid: GridLayout
+class MainActivity : ComponentActivity() {
 
     private val allModes = GameModesFactory.createAll()
-    private var selectedModeIndex = 0
-    private var currentMode: GameMode? = null
-    private val cellButtons = mutableListOf<MaterialButton>()
-
-    private val handler = Handler(Looper.getMainLooper())
-    private val ticker = object : Runnable {
-        override fun run() {
-            currentMode?.tick()
-            render()
-            handler.postDelayed(this, 1_000)
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        setContent {
+            MaterialTheme(colorScheme = gameColorScheme()) {
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    TicTacToeApp(allModes)
+                }
+            }
+        }
+    }
+}
 
-        bindViews()
-        setupModeList()
-        setupButtons()
-        updateSelectedModeCard()
-        showMenuScreen()
+@Composable
+private fun TicTacToeApp(modes: List<GameMode>) {
+    var selectedModeIndex by remember { mutableIntStateOf(0) }
+    var currentMode by remember { mutableStateOf<GameMode?>(null) }
+    var viewState by remember { mutableStateOf<GameViewState?>(null) }
+    var inGame by remember { mutableStateOf(false) }
 
-        onBackPressedDispatcher.addCallback(
-            this,
-            object : OnBackPressedCallback(true) {
-                override fun handleOnBackPressed() {
-                    if (gameScreen.visibility == View.VISIBLE) {
-                        showMenuScreen()
-                    } else {
-                        finish()
+    LaunchedEffect(currentMode, inGame) {
+        while (inGame) {
+            delay(1_000)
+            currentMode?.tick()
+            viewState = currentMode?.render()
+        }
+    }
+
+    BackHandler(enabled = inGame) {
+        inGame = false
+    }
+
+    if (!inGame) {
+        MenuScreen(
+            modes = modes,
+            selectedModeIndex = selectedModeIndex,
+            onSelect = { selectedModeIndex = it },
+            onStart = {
+                val mode = modes[selectedModeIndex]
+                mode.newGame()
+                currentMode = mode
+                viewState = mode.render()
+                inGame = true
+            }
+        )
+    } else {
+        val state = viewState ?: return
+        GameScreen(
+            state = state,
+            onCellTap = { index ->
+                currentMode?.tap(index)
+                viewState = currentMode?.render()
+            },
+            onRestart = {
+                currentMode?.newGame()
+                viewState = currentMode?.render()
+            },
+            onSwitchMode = { inGame = false }
+        )
+    }
+}
+
+@Composable
+private fun MenuScreen(
+    modes: List<GameMode>,
+    selectedModeIndex: Int,
+    onSelect: (Int) -> Unit,
+    onStart: () -> Unit
+) {
+    val selectedMode = modes[selectedModeIndex].definition
+
+    Scaffold { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp)
+        ) {
+            Text("Крестики-нолики", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text("10 режимов в одном приложении", color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+            Spacer(Modifier.height(14.dp))
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Text("Выбранный режим", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(selectedMode.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(6.dp))
+                    Text(selectedMode.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Text("Все режимы", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+
+            Card(
+                modifier = Modifier.weight(1f),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                LazyColumn {
+                    itemsIndexed(modes) { index, mode ->
+                        val selected = index == selectedModeIndex
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelect(index) }
+                                .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else Color.Transparent)
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (selected) "●" else "○",
+                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.widthIn(min = 10.dp))
+                            Text(mode.definition.title)
+                        }
                     }
                 }
             }
-        )
-    }
 
-    override fun onResume() {
-        super.onResume()
-        handler.postDelayed(ticker, 1_000)
-    }
-
-    override fun onPause() {
-        super.onPause()
-        handler.removeCallbacks(ticker)
-    }
-
-    private fun bindViews() {
-        menuScreen = findViewById(R.id.menuScreen)
-        gameScreen = findViewById(R.id.gameScreen)
-
-        selectedModeTitle = findViewById(R.id.selectedModeTitle)
-        selectedModeDescription = findViewById(R.id.selectedModeDescription)
-        modeList = findViewById(R.id.modeList)
-        startGameButton = findViewById(R.id.startGameButton)
-
-        gameModeTitle = findViewById(R.id.gameModeTitle)
-        gameModeDescription = findViewById(R.id.gameModeDescription)
-        statusText = findViewById(R.id.statusText)
-        restartButton = findViewById(R.id.restartButton)
-        switchModeButton = findViewById(R.id.switchModeButton)
-        menuButton = findViewById(R.id.menuButton)
-        boardGrid = findViewById(R.id.boardGrid)
-    }
-
-    private fun setupModeList() {
-        val adapter = ArrayAdapter(
-            this,
-            android.R.layout.simple_list_item_single_choice,
-            allModes.map { it.definition.title }
-        )
-
-        modeList.adapter = adapter
-        modeList.choiceMode = ListView.CHOICE_MODE_SINGLE
-        modeList.setItemChecked(selectedModeIndex, true)
-        modeList.onItemClickListener = AdapterView.OnItemClickListener { _, _, position, _ ->
-            selectedModeIndex = position
-            updateSelectedModeCard()
+            Spacer(Modifier.height(12.dp))
+            ActionButton(text = "Начать игру", onClick = onStart)
         }
     }
+}
 
-    private fun setupButtons() {
-        startGameButton.setOnClickListener {
-            startSelectedMode()
-            showGameScreen()
-        }
+@Composable
+private fun GameScreen(
+    state: GameViewState,
+    onCellTap: (Int) -> Unit,
+    onRestart: () -> Unit,
+    onSwitchMode: () -> Unit
+) {
+    Scaffold { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(12.dp)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(state.modeName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(state.modeDescription, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(10.dp))
+                    StatusChip(state)
+                }
+            }
 
-        restartButton.setOnClickListener {
-            currentMode?.newGame()
-            render()
-        }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ActionButton("Рестарт", modifier = Modifier.weight(1f), onClick = onRestart)
+                ActionButton("Сменить режим", modifier = Modifier.weight(1f), onClick = onSwitchMode)
+            }
+            Spacer(Modifier.height(10.dp))
 
-        switchModeButton.setOnClickListener {
-            showMenuScreen()
-            modeList.smoothScrollToPosition(selectedModeIndex)
-        }
-
-        menuButton.setOnClickListener {
-            showMenuScreen()
-        }
-    }
-
-    private fun startSelectedMode() {
-        currentMode = allModes[selectedModeIndex]
-        currentMode?.newGame()
-        render()
-    }
-
-    private fun showMenuScreen() {
-        menuScreen.visibility = View.VISIBLE
-        gameScreen.visibility = View.GONE
-    }
-
-    private fun showGameScreen() {
-        menuScreen.visibility = View.GONE
-        gameScreen.visibility = View.VISIBLE
-    }
-
-    private fun updateSelectedModeCard() {
-        val mode = allModes[selectedModeIndex].definition
-        selectedModeTitle.text = mode.title
-        selectedModeDescription.text = mode.description
-    }
-
-    private fun render() {
-        val state = currentMode?.render() ?: return
-
-        gameModeTitle.text = state.modeName
-        gameModeDescription.text = state.modeDescription
-        statusText.text = state.status
-
-        if (cellButtons.size != state.cells.size) {
-            rebuildGrid(state.boardSize, state.cells.size)
-        }
-
-        state.cells.forEachIndexed { index, cell ->
-            val button = cellButtons[index]
-            button.text = cell.text
-            button.isEnabled = cell.enabled
-            button.alpha = if (cell.blocked) 0.5f else 1f
-            button.setTextColor(colorForCell(cell.kind))
-            button.strokeColor = getColorStateList(R.color.cell_border)
-            button.backgroundTintList = getColorStateList(
-                if (cell.blocked) R.color.cell_blocked else R.color.cell_bg
+            Board(
+                state = state,
+                onTap = onCellTap
             )
         }
     }
-
-    private fun colorForCell(kind: CellKind): Int {
-        return when (kind) {
-            CellKind.X -> getColor(R.color.mark_x)
-            CellKind.O -> getColor(R.color.mark_o)
-            CellKind.BLOCKED -> getColor(R.color.text_secondary)
-            CellKind.EMPTY -> getColor(R.color.text_primary)
-        }
-    }
-
-    private fun rebuildGrid(boardSize: Int, totalCells: Int) {
-        boardGrid.removeAllViews()
-        cellButtons.clear()
-
-        boardGrid.columnCount = boardSize
-        boardGrid.rowCount = boardSize
-
-        val screenWidth = resources.displayMetrics.widthPixels
-        val side = min(screenWidth - dp(32), dp(520))
-        val cellSize = side / boardSize
-
-        repeat(totalCells) { index ->
-            val button = MaterialButton(
-                this,
-                null,
-                com.google.android.material.R.attr.materialButtonOutlinedStyle
-            ).apply {
-                textSize = when {
-                    boardSize <= 4 -> 24f
-                    boardSize <= 6 -> 18f
-                    else -> 13f
-                }
-                isAllCaps = false
-                setPadding(0, 0, 0, 0)
-                cornerRadius = dp(8)
-                strokeWidth = dp(1)
-                setOnClickListener {
-                    currentMode?.tap(index)
-                    render()
-                }
-            }
-
-            val params = GridLayout.LayoutParams().apply {
-                width = cellSize
-                height = cellSize
-                setMargins(dp(2), dp(2), dp(2), dp(2))
-            }
-            boardGrid.addView(button, params)
-            cellButtons.add(button)
-        }
-    }
-
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }
+
+@Composable
+private fun StatusChip(state: GameViewState) {
+    val text = when {
+        state.winner != null -> "Победа ${state.winner.symbol}"
+        state.isDraw -> "Ничья"
+        state.currentPlayer != null -> "Сейчас ход: ${state.currentPlayer.symbol}"
+        else -> state.status
+    }
+    val color = when {
+        state.winner == Mark.X -> Color(0xFF2167FF)
+        state.winner == Mark.O -> Color(0xFFFF7A00)
+        state.isDraw -> MaterialTheme.colorScheme.secondary
+        state.currentPlayer == Mark.X -> Color(0xFF2167FF)
+        state.currentPlayer == Mark.O -> Color(0xFFFF7A00)
+        else -> MaterialTheme.colorScheme.primary
+    }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.13f)),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.4f))
+    ) {
+        Text(
+            text = "$text · ${state.status}",
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun Board(state: GameViewState, onTap: (Int) -> Unit) {
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val side = maxWidth.coerceAtMost(560.dp)
+        Card(
+            modifier = Modifier
+                .widthIn(max = side)
+                .fillMaxWidth()
+                .padding(4.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        ) {
+            Column(Modifier.padding(8.dp)) {
+                for (row in 0 until state.boardSize) {
+                    Row {
+                        for (col in 0 until state.boardSize) {
+                            val index = row * state.boardSize + col
+                            val cell = state.cells[index]
+                            val localIndex = if (state.boardSize == 9) (row / 3) * 3 + (col / 3) else null
+                            val blockBorder = state.ultimate?.let {
+                                localIndex != null && it.forcedLocal == localIndex
+                            } ?: false
+                            val stroke = when {
+                                state.boardSize == 9 && (row % 3 == 0 || col % 3 == 0) -> 2.dp
+                                else -> 1.dp
+                            }
+
+                            val borderColor = when {
+                                blockBorder -> MaterialTheme.colorScheme.primary
+                                state.boardSize == 9 && (row % 3 == 0 || col % 3 == 0) -> MaterialTheme.colorScheme.outline
+                                else -> MaterialTheme.colorScheme.outlineVariant
+                            }
+
+                            val bg = when {
+                                cell.blocked -> MaterialTheme.colorScheme.surfaceVariant
+                                cell.dimmed -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                blockBorder -> MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                                else -> MaterialTheme.colorScheme.surface
+                            }
+
+                            val markColor = when (cell.kind) {
+                                CellKind.X -> Color(0xFF2167FF)
+                                CellKind.O -> Color(0xFFFF7A00)
+                                CellKind.BLOCKED -> MaterialTheme.colorScheme.onSurfaceVariant
+                                CellKind.EMPTY -> MaterialTheme.colorScheme.onSurface
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .aspectRatio(1f)
+                                    .padding(1.5.dp)
+                                    .background(bg, RoundedCornerShape(8.dp))
+                                    .border(stroke, borderColor, RoundedCornerShape(8.dp))
+                                    .sizeIn(minWidth = 36.dp, minHeight = 36.dp)
+                                    .clickable(enabled = cell.enabled) { onTap(index) }
+                                    .alpha(if (cell.dimmed) 0.7f else 1f),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = cell.text,
+                                    color = markColor,
+                                    fontSize = when {
+                                        state.boardSize <= 4 -> 34.sp
+                                        state.boardSize <= 6 -> 24.sp
+                                        else -> 17.sp
+                                    },
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActionButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(vertical = 12.dp),
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onPrimary,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun gameColorScheme() = androidx.compose.material3.lightColorScheme(
+    primary = Color(0xFF335EFF),
+    onPrimary = Color.White,
+    background = Color(0xFFF4F6FB),
+    surface = Color.White,
+    onSurface = Color(0xFF1A2234),
+    onSurfaceVariant = Color(0xFF5C6780),
+    outline = Color(0xFF7A869C),
+    outlineVariant = Color(0xFFC8D0E2),
+    surfaceVariant = Color(0xFFE8EDF8),
+    secondary = Color(0xFF56627B)
+)
